@@ -1,0 +1,15 @@
+FROM golang:1.21
+
+WORKDIR /tcptunnel
+
+ADD . .
+RUN go mod tidy
+
+# install AIR for debugging
+RUN curl -sSfL https://raw.githubusercontent.com/cosmtrek/air/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+RUN curl -sSfL https://raw.githubusercontent.com/cosmtrek/air/master/install.sh | sh -s
+
+ENV TCPTUNNEL_PORT 8080
+EXPOSE 8080
+
+CMD air -build.bin /server -build.cmd "go build -o /server ./cmd/server/ && go build -o /cli ./cmd/cli"
