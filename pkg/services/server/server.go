@@ -1,10 +1,11 @@
-package main
+package server
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -179,4 +180,39 @@ func sendMessage(client models.Client, message models.Message) error {
 	}
 
 	return nil
+}
+
+func StartServer(serverPort string) {
+	listener, err := net.Listen("tcp", fmt.Sprint(":", serverPort))
+	if err != nil {
+		fmt.Println("Erro ao iniciar o servidor:", err)
+		return
+	}
+	defer listener.Close()
+
+	fmt.Printf("Servidor escutando na porta %s...\n", serverPort)
+
+	go streamMessages()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Erro ao aceitar conexão:", err)
+			continue
+		}
+
+		clientID, _ := generateRandomHexCode()
+		fmt.Println("Client accepted:", clientID)
+
+		client := models.Client{
+			ID:       clientID,
+			Conn:     conn,
+			Messages: make(chan models.Message),
+		}
+
+		mutex.Lock()
+		clients[client.ID] = client
+		mutex.Unlock()
+
+		go handleClient(client)
+	}
 }

@@ -1,13 +1,17 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"time"
 
 	"github.com/plankiton/tcptunnel/pkg/models"
+	"github.com/plankiton/tcptunnel/pkg/services/client"
+)
+
+var (
+	responseStream chan models.Message
 )
 
 func main() {
@@ -17,8 +21,7 @@ func main() {
 
 	conn, err := net.Dial("tcp", serverURL)
 	if err != nil {
-		fmt.Println("Erro ao conectar ao servidor:", err)
-		os.Exit(1)
+		fmt.Printf("{\"error\": \"error connecting with local server: %v\"}", err)
 	}
 	defer conn.Close()
 
@@ -34,24 +37,74 @@ func main() {
 		fmt.Scan(&msg.Message)
 	}
 
-	encoder := json.NewEncoder(conn)
-	err = encoder.Encode(msg)
+	response, err := client.SendMessageToServer(msg, conn, responseStream)
 	if err != nil {
-		fmt.Println("Erro ao enviar mensagem:", err)
-		return
+		fmt.Printf("{\"error\": \"error during client trigger startup: %v\"}", err)
+		os.Exit(1)
 	}
 
-	errorChan := make(chan error, 5)
-	go handleIncomingMessages(conn, errorChan)
-	go func() {
-		time.Sleep(30 * time.Second)
-		errorChan <- fmt.Errorf("Time out")
-	}()
+	fmt.Println(response.Message)
+}
 
-	err = <-errorChan
-	if err != nil {
-		fmt.Println("Erro ao receber a resposta do servidor:", err)
+func getCLIActionFlag() (action string, messageId string) {
+	messageId = ""
+	action = models.GetActionFlag
+	for a, arg := range os.Args {
+		if arg == "-C" {
+			action = models.CreateActionFlag
+		}
+
+		if arg == "-G" {
+			if a+1 < len(os.Args) {
+				action = models.GetActionFlag
+				messageId = os.Args[a+1]
+			} else {
+				messageId = "0"
+			}
+		}
+
+		if arg == "-U" {
+			if a+1 < len(os.Args) {
+				action = models.UpdateActionFlag
+				messageId = os.Args[a+1]
+			} else {
+				messageId = "0"
+			}
+		}
+
+		if arg == "-D" {
+			if a+1 < len(os.Args) {
+				action = models.DeleteActionFlag
+				messageId = os.Args[a+1]
+			} else {
+				messageId = "0"
+			}
+		}
+
 	}
+
+	return action, messageId
+}
+
+func getServerURLFlag() string {
+	serverURL := os.Getenv("TCPTUNNEL_URL")
+	if serverURL != "" {
+		return serverURL
+	}
+
+	for a, arg := range os.Args {
+		if arg == "-s" {
+			if a+1 < len(os.Args) {
+				serverURL = os.Args[a+1]
+				break
+			}
+		}
+	}
+
+	if serverURL != "" {
+		return serverURL
+	}
+	return "localhost:8080"
 }
 
 func inputIsNeeded(msg models.Message) bool {
