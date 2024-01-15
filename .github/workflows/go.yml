@@ -8,9 +8,19 @@ on:
     branches: [ "root" ]
   pull_request:
     branches: [ "root" ]
+  workflow_dispatch:
+    inputs:
+      evironment:
+        description: 'Application Environment'
+        required: true
+        default: 'LOCAL'
+        type: choice
+        options:
+          - LOCAL
+          - DEVELOP
+          - PRODUCTION
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -20,6 +30,10 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.20'
+    - name: Select Environment ${{inputs.environment}}
+      run: |
+        source .env
+        export APP_ENVIRONMENT="${{inputs.environment}}"
 
     - name: Build
       run: go build -v ./cmd/...
