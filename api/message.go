@@ -1,4 +1,4 @@
-package api
+package hanlder
 
 import (
 	"encoding/json"
@@ -48,7 +48,7 @@ func streamMessagesToServer(serverURL string) {
 	}
 }
 
-func Api(w http.ResponseWriter, r *http.Request) {
+func Message(w http.ResponseWriter, r *http.Request) {
 	var message models.Message
 
 	encoder := json.NewEncoder(w)
