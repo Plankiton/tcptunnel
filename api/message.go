@@ -11,7 +11,6 @@ import (
 	"github.com/plankiton/tcptunnel/pkg/models"
 	"github.com/plankiton/tcptunnel/pkg/services/client"
 	"github.com/plankiton/tcptunnel/pkg/services/server"
-	"golang.org/x/net/context"
 )
 
 var (
