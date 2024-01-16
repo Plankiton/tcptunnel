@@ -1,14 +1,17 @@
 package hanlder
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/plankiton/tcptunnel/pkg/models"
 	"github.com/plankiton/tcptunnel/pkg/services/client"
 	"github.com/plankiton/tcptunnel/pkg/services/server"
+	"golang.org/x/net/context"
 )
 
 var (
@@ -63,31 +66,52 @@ func Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go processMessage(message, conn, responseStream)
-	encoder.Encode(response{
-		Info: "message successful sended",
-		Message: models.Message{
-			Message: fmt.Sprintln(message.Action.Name, "operation processed with success"),
-		},
-	})
-}
+	ctx, cancel := context.WithTimeout(r.Context(), 9*time.Second)
+	defer cancel()
 
-func processMessage(message models.Message, conn net.Conn, responseStream chan models.Message) (response models.Message, err error) {
-	resMessage, err := client.SendMessageToServer(message, conn, responseStream)
-	if err != nil {
-		responseJson, _ := json.Marshal(responseError{
-			Message: message,
-			Error:   fmt.Sprint("error tunneling message request:", err),
-			Extra: map[string]interface{}{
-				"response": resMessage,
+	var responseMsg models.Message
+	go func() {
+		responseMsg, err = processMessage(ctx, message, conn, responseStream)
+	}()
+
+	select {
+	case <-ctx.Done():
+		encoder.Encode(response{
+			Info:    "message successful sended",
+			Message: responseMsg,
+		})
+	default:
+		encoder.Encode(response{
+			Info: "message successful sended, but cant cant get server response",
+			Message: models.Message{
+				Message: fmt.Sprintln(message.Action.Name, "operation processed with success"),
 			},
 		})
-
-		fmt.Println(responseJson)
-		return resMessage, err
 	}
+}
 
-	return resMessage, nil
+var messageTimeoutError = fmt.Errorf("time out during message processment")
+
+func processMessage(ctx context.Context, message models.Message, conn net.Conn, responseStream chan models.Message) (response models.Message, err error) {
+	select {
+	case <-ctx.Done():
+		return models.Message{}, messageTimeoutError
+	default:
+		response, err = client.SendMessageToServer(message, conn, responseStream)
+		if err != nil {
+			responseJson, _ := json.Marshal(responseError{
+				Message: message,
+				Error:   fmt.Sprint("error tunneling message request:", err),
+				Extra: map[string]interface{}{
+					"response": response,
+				},
+			})
+
+			fmt.Println(responseJson)
+		}
+
+		return response, nil
+	}
 }
 
 type response struct {
