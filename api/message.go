@@ -63,21 +63,31 @@ func Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go processMessage(message, conn, responseStream)
+	encoder.Encode(response{
+		Info: "message successful sended",
+		Message: models.Message{
+			Message: fmt.Sprintln(message.Action.Name, "operation processed with success"),
+		},
+	})
+}
+
+func processMessage(message models.Message, conn net.Conn, responseStream chan models.Message) (response models.Message, err error) {
 	resMessage, err := client.SendMessageToServer(message, conn, responseStream)
 	if err != nil {
-		encoder.Encode(responseError{
+		responseJson, _ := json.Marshal(responseError{
 			Message: message,
 			Error:   fmt.Sprint("error tunneling message request:", err),
+			Extra: map[string]interface{}{
+				"response": resMessage,
+			},
 		})
 
-		w.WriteHeader(500)
-		return
+		fmt.Println(responseJson)
+		return resMessage, err
 	}
 
-	encoder.Encode(response{
-		Info:    "message successful sended",
-		Message: resMessage,
-	})
+	return resMessage, nil
 }
 
 type response struct {
@@ -88,4 +98,5 @@ type response struct {
 type responseError struct {
 	Message models.Message `json:"message"`
 	Error   string         `json:"error"`
+	Extra   interface{}    `json:"extra"`
 }
