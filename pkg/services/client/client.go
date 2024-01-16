@@ -7,26 +7,68 @@ import (
 	"os"
 	"time"
 
+	"github.com/plankiton/tcptunnel/pkg/env"
 	"github.com/plankiton/tcptunnel/pkg/models"
 )
 
-func SendMessageToServer(msg models.Message, conn net.Conn, responseStream chan models.Message) (response models.Message, err error) {
-	encoder := json.NewEncoder(conn)
-	err = encoder.Encode(msg)
-	if err != nil {
-		return response, fmt.Errorf("error decoding message: %v", err)
-	}
-
-	errorChan := make(chan error, 5)
-	go handleIncomingMessages(conn, responseStream, errorChan)
-	go func() {
-		time.Sleep(30 * time.Second)
-		errorChan <- fmt.Errorf("internal time out when receiving server incoming messages")
-	}()
+func SendMessage(message models.Message, conn net.Conn, responseStream chan models.Message, isConnClosed chan struct{}) (response models.Message, err error) {
+	errorStream := make(chan error, env.MESSAGE_BATCH_SIZE)
+	go StreamMessage(message, conn, responseStream, errorStream, isConnClosed)
 
 	response = <-responseStream
-	err = <-errorChan
+	err = <-errorStream
 	return response, err
+}
+
+func closeConnection(conn net.Conn, isConnClosed chan struct{}) {
+	conn.Close()
+	isConnClosed <- struct{}{}
+}
+
+func StreamMessage(message models.Message, conn net.Conn, responseStream chan models.Message, errorStream chan error, isConnClosed chan struct{}) {
+	defer closeConnection(conn, isConnClosed)
+
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	err := encoder.Encode(message)
+	if err != nil {
+		responseStream <- models.Message{
+			Message: fmt.Sprintf("error during message streaming: %v", err),
+			Extra: map[string]interface{}{
+				"message": message,
+			},
+		}
+		errorStream <- fmt.Errorf("error decoding message: %v", err)
+		return
+	}
+
+	var response models.Message
+	err = decoder.Decode(&response)
+	if err != nil {
+		responseStream <- response
+		errorStream <- fmt.Errorf("error decoding message: %v", err)
+		return
+	}
+
+	responseStream <- response
+	errorStream <- nil
+}
+
+func ListenMessages(conn net.Conn, messageStream, responseStream chan models.Message, errorStream chan error, isConnClosed chan struct{}) {
+	go processResponseMessages(conn, messageStream, responseStream, errorStream, isConnClosed)
+	go func() {
+		time.Sleep(30 * time.Second)
+		errorStream <- fmt.Errorf("internal time out when receiving server incoming messages")
+	}()
+}
+
+func ListenMessageMessages(conn net.Conn, responseStream chan models.Message, errorStream chan error) {
+	go handleIncomingMessages(conn, responseStream, errorStream)
+	go func() {
+		time.Sleep(30 * time.Second)
+		errorStream <- fmt.Errorf("internal time out when receiving server incoming messages")
+	}()
 }
 
 func receiveServerMessage(conn net.Conn) (models.Message, error) {
@@ -36,16 +78,23 @@ func receiveServerMessage(conn net.Conn) (models.Message, error) {
 	return message, err
 }
 
-func handleIncomingMessages(serverConn net.Conn, responseStream chan models.Message, signalChannel chan error) {
+func processResponseMessages(serverConn net.Conn, messageStream, responseStream chan models.Message, errorsStream chan error, isConnClosed chan struct{}) {
+	for message := range messageStream {
+		go StreamMessage(message, serverConn, responseStream, errorsStream, isConnClosed)
+		go handleIncomingMessages(serverConn, responseStream, errorsStream)
+	}
+}
+
+func handleIncomingMessages(serverConn net.Conn, responseStream chan models.Message, errorsStream chan error) {
 	for {
-		msg, err := receiveServerMessage(serverConn)
+		message, err := receiveServerMessage(serverConn)
 		if err != nil {
-			signalChannel <- fmt.Errorf("Erro ao decodificar mensagem: %v", err)
+			errorsStream <- fmt.Errorf("Erro ao decodificar mensagem: %v", err)
 			return
 		}
 
-		responseStream <- msg
-		signalChannel <- nil
+		responseStream <- message
+		errorsStream <- nil
 	}
 }
 

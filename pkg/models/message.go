@@ -4,17 +4,28 @@ import "time"
 
 // Message struct para armazenar os metadados da mensagem
 type Message struct {
-	SendedAt   time.Time `json:"sendedAt,omitempty"`
-	CreatedAt  time.Time `json:"createdAt,omitempty"`
-	Message    string    `json:"message,omitempty"`
-	SenderID   string    `json:"senderID,omitempty"`
-	Action     Action    `json:"action,omitempty"`
-	RetryCount int       `json:"retryCount,omitempty"`
+	ID string `json:"id,omitempty"`
+
+	RetryCount int `json:"retryCount,omitempty"`
+
+	Action Action `json:"action,omitempty"`
+
+	Message  string `json:"message,omitempty"`
+	SenderID string `json:"senderID,omitempty"`
+
+	Extra interface{} `json:"extra,omitempty"`
+
+	SendedAt  time.Time `json:"sendedAt,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 }
 
 type Action struct {
 	Name      string `json:"name"`
 	MessageID string `json:"messageID"`
+}
+
+func (m Message) Error() string {
+	return m.Message
 }
 
 const (
