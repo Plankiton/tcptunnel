@@ -14,10 +14,16 @@ import (
 )
 
 var (
-	clients          = make(map[string]models.Client)
-	messages         = make([]models.Message, 0)
-	mutex            = sync.Mutex{}
-	messageStreaming = make(chan models.Message, 5)
+	mutex = sync.Mutex{}
+
+	clients  = make(map[string]models.Client)
+	messages = make([]models.Message, 0)
+
+	messageStream = make(chan models.Message, 5)
+	errorsStream  = make(chan error)
+
+	responseStream       = make(chan models.Message, 5)
+	responseErrorsStream = make(chan error)
 )
 
 func isRelativeFromLastMessageId(messageId, messageIndex int) bool {
@@ -32,18 +38,31 @@ func handleClient(client models.Client) {
 	defer client.Conn.Close()
 
 	for {
-		var msg models.Message
+		var (
+			message models.Message
+		)
+
 		decoder := json.NewDecoder(client.Conn)
-		err := decoder.Decode(&msg)
+		err := decoder.Decode(&message)
+
 		if err != nil {
-			fmt.Println("Erro ao decodificar mensagem:", err)
-			return
+			messageJSON, _ := json.Marshal(message)
+			errorMessage := fmt.Sprintf("error during client message encoding: %v", err)
+
+			fmt.Printf("{\"message\": %s, \"error\": \"%s\"}\n", messageJSON, errorMessage)
+			messageStream <- message
+			errorsStream <- models.Message{
+				Message: errorMessage,
+				Extra: map[string]interface{}{
+					"message": message,
+				},
+			}
 		}
 
-		msg.CreatedAt = msg.SendedAt
-		msg.SenderID = client.ID
+		message.CreatedAt = message.SendedAt
+		message.SenderID = client.ID
 
-		rawJsonMessage, _ := json.Marshal(msg)
+		rawJsonMessage, _ := json.Marshal(message)
 		fmt.Println(string(rawJsonMessage))
 
 		outputMsg := models.Message{
@@ -52,9 +71,9 @@ func handleClient(client models.Client) {
 		}
 
 		mutex.Lock()
-		switch msg.Action.Name {
+		switch message.Action.Name {
 		case models.GetActionFlag:
-			selectedMsg := selectMessage(msg)
+			selectedMsg := selectMessage(message)
 
 			if selectedMsg.Message == "" {
 				selectedMsg.Message = "message not found, please select each other message id"
@@ -63,53 +82,66 @@ func handleClient(client models.Client) {
 			outputMsg.Message = selectedMsg.Message
 
 		case models.UpdateActionFlag:
-			messageIndex := getMessageListIndex(getMessageID(msg))
-			msg.CreatedAt = time.Now()
+			messageIndex := getMessageListIndex(getMessageID(message))
+			message.CreatedAt = time.Now()
 
-			messages[messageIndex] = msg
+			messages[messageIndex] = message
 		case models.DeleteActionFlag:
-			messageIndex := getMessageListIndex(getMessageID(msg))
+			messageIndex := getMessageListIndex(getMessageID(message))
 
 			swapMessages := make([]models.Message, 0)
-			for i, msg := range messages {
+			for i, message := range messages {
 				if i != messageIndex {
-					swapMessages = append(swapMessages, msg)
+					swapMessages = append(swapMessages, message)
 				}
 			}
 
 			messages = swapMessages
 		case models.CreateActionFlag:
-			msg.CreatedAt = time.Now()
+			message.CreatedAt = time.Now()
 
-			outputMsg.Message = msg.Message
-			messages = append(messages, msg)
+			outputMsg.Message = message.Message
+			messages = append(messages, message)
 		}
 
 		mutex.Unlock()
 
-		fmt.Println()
 		sendMessage(client, outputMsg)
-		messageStreaming <- outputMsg
+		messageStream <- outputMsg
+		errorsStream <- nil
 	}
 }
 
 func streamMessages() {
-	for outputMsg := range messageStreaming {
-		hasError := false
+	for outputMsg := range messageStream {
+		err := <-errorsStream
+		errorMessage := fmt.Sprintf("error receiving message: %v", err)
+		messageJSON, _ := json.Marshal(outputMsg)
+
+		fmt.Println("{\"message\": " + string(messageJSON) + ", \"error\": \"erro ao decodificar mensagem: " + err.Error() + "\"}")
+		if err != nil {
+			responseStream <- outputMsg
+			responseErrorsStream <- models.Message{
+				Message: errorMessage,
+				Extra: map[string]interface{}{
+					"message": outputMsg,
+				},
+			}
+		}
 
 		for _, currClient := range clients {
 			if currClient.ID == outputMsg.SenderID {
 				continue
 			}
 
-			if err := sendMessage(currClient, outputMsg); err != nil {
-				hasError = true
+			if err = sendMessage(currClient, outputMsg); err != nil {
+				if err != nil && outputMsg.RetryCount < 5 {
+					messageStream <- outputMsg
+					errorsStream <- nil
+				}
+
 				break
 			}
-		}
-
-		if hasError && outputMsg.RetryCount < 5 {
-			messageStreaming <- outputMsg
 		}
 
 		outputMsg.RetryCount++
@@ -143,24 +175,24 @@ func generateRandomHexCode() (string, error) {
 	return hexCode, nil
 }
 
-func getMessageID(msg models.Message) int {
-	if messageID, err := strconv.Atoi(msg.Action.MessageID); err != nil {
+func getMessageID(message models.Message) int {
+	if messageID, err := strconv.Atoi(message.Action.MessageID); err != nil {
 		return messageID
 	}
 
 	return 0
 }
 
-func selectMessage(msg models.Message) models.Message {
-	messageID := getMessageID(msg)
+func selectMessage(message models.Message) models.Message {
+	messageID := getMessageID(message)
 	fmt.Println("\n\nMessages:", messages, "message id:", messageID)
 
 	var found models.Message
-	for m, msg := range messages {
-		fmt.Println(" -> sel message index:", m, " query msg index:", getMessageListIndex(messageID), "msg:", msg.Message)
+	for m, message := range messages {
+		fmt.Println(" -> sel message index:", m, " query message index:", getMessageListIndex(messageID), "message:", message.Message)
 		if isRelativeFromLastMessageId(messageID, m) {
 			fmt.Print("     FOUND!!\n\n\n")
-			found = msg
+			found = message
 			break
 		}
 

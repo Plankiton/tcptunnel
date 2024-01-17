@@ -12,6 +12,7 @@ import (
 
 var (
 	responseStream chan models.Message
+	isConnClosed   chan struct{}
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	msg := models.Message{
+	message := models.Message{
 		SendedAt: time.Now(),
 		Action: models.Action{
 			Name:      action,
@@ -33,11 +34,11 @@ func main() {
 		},
 	}
 
-	if inputIsNeeded(msg) {
-		fmt.Scan(&msg.Message)
+	if inputIsNeeded(message) {
+		fmt.Scan(&message.Message)
 	}
 
-	response, err := client.SendMessageToServer(msg, conn, responseStream)
+	response, err := client.SendMessage(message, conn, responseStream, isConnClosed)
 	if err != nil {
 		fmt.Printf("{\"error\": \"error during client trigger startup: %v\"}", err)
 		os.Exit(1)
@@ -107,6 +108,6 @@ func getServerURLFlag() string {
 	return "localhost:8080"
 }
 
-func inputIsNeeded(msg models.Message) bool {
-	return msg.Action.Name == models.CreateActionFlag || msg.Action.Name == models.UpdateActionFlag
+func inputIsNeeded(message models.Message) bool {
+	return message.Action.Name == models.CreateActionFlag || message.Action.Name == models.UpdateActionFlag
 }
