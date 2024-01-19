@@ -2,13 +2,16 @@ package main
 
 import (
 	"log"
+	"net/http"
 
-	handler "github.com/plankiton/tcptunnel/api"
+	"github.com/plankiton/tcptunnel/pkg/api"
 )
 
 func main() {
-	server := handler.NewHandler()
-	err := server.ListenAndServe()
+	http.HandleFunc("/message", api.Message)
+	http.HandleFunc("/stream", api.Stream)
+
+	err := http.ListenAndServe(":8000", nil)
 	if err != nil {
 		log.Fatal("server dies: " + err.Error())
 	}

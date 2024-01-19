@@ -89,7 +89,7 @@ func handleIncomingMessages(serverConn net.Conn, responseStream chan models.Mess
 	for {
 		message, err := receiveServerMessage(serverConn)
 		if err != nil {
-			errorsStream <- fmt.Errorf("Erro ao decodificar mensagem: %v", err)
+			errorsStream <- fmt.Errorf("err receiving server message: %v", err)
 			return
 		}
 

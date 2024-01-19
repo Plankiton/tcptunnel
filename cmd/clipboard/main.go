@@ -44,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(response.Message)
+	fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln(response.Message))
 }
 
 func getCLIActionFlag() (action string, messageId string) {

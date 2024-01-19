@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -63,7 +64,7 @@ func handleClient(client models.Client) {
 		message.SenderID = client.ID
 
 		rawJsonMessage, _ := json.Marshal(message)
-		fmt.Println(string(rawJsonMessage))
+		fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln(string(rawJsonMessage)))
 
 		outputMsg := models.Message{
 			SendedAt: time.Now(),
@@ -118,7 +119,7 @@ func streamMessages() {
 		errorMessage := fmt.Sprintf("error receiving message: %v", err)
 		messageJSON, _ := json.Marshal(outputMsg)
 
-		fmt.Println("{\"message\": " + string(messageJSON) + ", \"error\": \"erro ao decodificar mensagem: " + err.Error() + "\"}")
+		fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln("{\"message\": "+string(messageJSON)+", \"error\": \"err decoding message: "+err.Error()+"\"}"))
 		if err != nil {
 			responseStream <- outputMsg
 			responseErrorsStream <- models.Message{
@@ -185,18 +186,15 @@ func getMessageID(message models.Message) int {
 
 func selectMessage(message models.Message) models.Message {
 	messageID := getMessageID(message)
-	fmt.Println("\n\nMessages:", messages, "message id:", messageID)
+	fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln("\n\nMessages:", messages, "message id:", messageID))
 
 	var found models.Message
 	for m, message := range messages {
-		fmt.Println(" -> sel message index:", m, " query message index:", getMessageListIndex(messageID), "message:", message.Message)
+		fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln(" -> sel message index:", m, " query message index:", getMessageListIndex(messageID), "message:", message.Message))
 		if isRelativeFromLastMessageId(messageID, m) {
-			fmt.Print("     FOUND!!\n\n\n")
 			found = message
 			break
 		}
-
-		fmt.Print("			NOT FOUND!!\n\n\n")
 	}
 
 	return found
@@ -206,7 +204,7 @@ func sendMessage(client models.Client, message models.Message) error {
 	encoder := json.NewEncoder(client.Conn)
 	err := encoder.Encode(message)
 	if err != nil {
-		fmt.Println("Erro ao enviar mensagem para o cliente", client.ID, ":", err)
+		fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln("error sending message to client", client.ID, ":", err))
 		delete(clients, client.ID)
 		return err
 	}
@@ -217,26 +215,27 @@ func sendMessage(client models.Client, message models.Message) error {
 func StartServer(serverPort string) {
 	listener, err := net.Listen("tcp", fmt.Sprint(":", serverPort))
 	if err != nil {
-		fmt.Println("Erro ao iniciar o servidor:", err)
+		fmt.Printf("{\"message\": \"error starting server: %v\"}\n", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Servidor escutando na porta %s...\n", serverPort)
+	fmt.Printf("{\"message\": \"we are listening at port %s...\"}\n", serverPort)
 
 	go streamMessages()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Erro ao aceitar conexão:", err)
+			fmt.Printf("{\"error\": \"%v\"}\n", err)
 			continue
 		}
 
 		clientID, _ := generateRandomHexCode()
-		fmt.Println("Client accepted:", clientID)
+		fmt.Printf("{\"message\": \"generated client id: %v\"}\n", clientID)
 
 		client := models.Client{
 			ID:       clientID,
+			Ctx:      context.Background(),
 			Conn:     conn,
 			Messages: make(chan models.Message),
 		}

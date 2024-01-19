@@ -1,4 +1,4 @@
-package handler
+package api
 
 import (
 	"encoding/json"
@@ -54,10 +54,6 @@ func init() {
 	go listenMessages()
 	go processResponseMessages()
 	go handleWebsocketConnections()
-}
-
-func Healphcheck(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello kitty!"))
 }
 
 func closeConnections() {
@@ -152,7 +148,7 @@ func sendMessage(message models.Message, conn net.Conn, isConnClosed chan struct
 			},
 		})
 
-		fmt.Println(responseJson)
+		fmt.Printf("{\"message\": \"%s\"}", fmt.Sprintln(responseJson))
 		return resMessage, err
 	}
 
