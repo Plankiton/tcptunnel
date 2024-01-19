@@ -61,5 +61,9 @@ func V1(w http.ResponseWriter, r *http.Request) {
 }
 
 func isSamePath(r *http.Request, path string) bool {
+	if len(r.URL.Path) < len(path) {
+		return false
+	}
+
 	return r.URL.Path[:len(path)] == path
 }
