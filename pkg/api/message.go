@@ -10,7 +10,7 @@ import (
 
 // Message is the vercel Handler entrypoint
 //
-// path: /api/message
+// path: /api/v1/message
 // methods allowed: ANY
 //
 //	model: models.Message {
