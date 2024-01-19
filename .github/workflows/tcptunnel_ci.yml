@@ -5,7 +5,7 @@ name: tcptunnel CI (Go)
 
 on:
   push:
-    branches: [ "root" ]
+    branches: [ "*" ]
   pull_request:
     branches: [ "root" ]
   workflow_dispatch:
