@@ -56,6 +56,10 @@ func init() {
 	go handleWebsocketConnections()
 }
 
+func Healphcheck(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello kitty!"))
+}
+
 func closeConnections() {
 	connMutex.Lock()
 	conn.Close()
