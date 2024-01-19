@@ -25,8 +25,8 @@ var (
 	responseStream chan models.Message // Response messages from tcptunnel
 	errorStream    chan error          // Errors from tcptunnel
 
-	wsConnStream   chan net.Conn              // Stream of websocket connections
-	wsConnIsClosed map[net.Conn]chan struct{} // Stream to manage websocket connections closing
+	wsConnList     []*net.Conn
+	wsConnIsClosed map[*net.Conn]chan struct{} // Stream to manage websocket connections closing
 
 	isConnClosed chan struct{}
 	connMutex    sync.Mutex
@@ -76,26 +76,37 @@ func listenMessages() {
 
 }
 
-func streamWebsocketMessages(conn net.Conn, isConnClosed chan struct{}) {
-	for {
-		for message := range wsMessagesStream {
-			client.StreamMessage(message, conn, wsMessagesStream, wsErrorsStream, isConnClosed)
+func streamWebsocketMessage(message models.Message, conn net.Conn, isConnClosed chan struct{}) {
+	messageBuffer, err := json.Marshal(message)
+	if err != nil {
+		conn.Write([]byte("{\"error\": \"" + err.Error() + "\", \"extra\": {\"message\": \"" + string(messageBuffer) + "\"}}"))
+		return
+	}
+
+	conn.Write(messageBuffer)
+}
+
+func waitWebsocketConnectionFinish(conn *net.Conn) {
+	<-wsConnIsClosed[conn]
+	close(wsConnIsClosed[conn])
+}
+
+func handleWebsocketConnection(conn *net.Conn) {
+	for _, wsConn := range wsConnList {
+		if wsConn == conn {
+			return
 		}
 	}
-}
 
-func waitWebsocketConnectionFinish(conn net.Conn) {
-
-}
-
-func handleWebsocketConnection(conn net.Conn) {
-	wsConnStream <- conn
+	wsConnList = append(wsConnList, conn)
 }
 
 func handleWebsocketConnections() {
-	for conn := range wsConnStream {
-		go streamWebsocketMessages(conn, wsConnIsClosed[conn])
-		go processResponseMessages()
+	for message := range wsMessagesStream {
+		for _, conn := range wsConnList {
+			go streamWebsocketMessage(message, *conn, isConnClosed)
+			go processResponseMessages()
+		}
 	}
 }
 
